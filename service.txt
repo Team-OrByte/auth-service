@@ -1,0 +1,275 @@
+import ballerina/http;
+// import ballerina/crypto;
+// import ballerina/time;
+// import ballerina/random;
+import ballerina/jwt;
+
+import ballerinax/postgresql;
+
+
+configurable int db_port = ?;
+configurable string db_host = ?;
+configurable string db_pass = ?;
+configurable string db_user = ?;
+configurable string db_name = ?;
+
+postgresql:Options postgresqlOptions = {
+    connectTimeout: 10
+};
+postgresql:Client dbClient = check new (username = db_user, password = db_pass, database = db_name, host = db_host, port = db_port, options = postgresqlOptions);
+
+listener http:Listener securedEP = new (3500,
+    secureSocket = {
+        key: {
+            certFile: "public.crt",
+            keyFile: "private.key"
+        }
+    }
+);
+
+jwt:IssuerConfig issuerConfig = {
+    username: "erides",
+    issuer: "Orbyte",
+    audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+    expTime: 3600,
+    signatureConfig: {
+        config: {
+            keyFile: "private.key"
+        }
+    },
+    customClaims: {
+        scopes: ["admin"],
+        userName :"hattike"
+    }
+};
+
+string token = check jwt:issue(issuerConfig);
+
+service /auth on new http:Listener(8082) {
+
+    resource function get accounts() returns ApiResponse|error {
+        string token = check jwt:issue(issuerConfig);
+        return {message: "ok", data: {token: token}};
+    }
+}
+
+type Album readonly & record {|
+    string title;
+    string artist;
+|};
+
+@http:ServiceConfig {
+    auth: [
+        {
+            jwtValidatorConfig: {
+                issuer: "orbyte",
+                audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+                signatureConfig: {
+                    certFile: "public.crt"
+                },
+                scopeKey: "scp"
+            },
+            scopes: ["admin"]
+        }
+    ]
+}
+service /validate on securedEP {
+
+    // It is optional to override the authentication and authorization configurations at the resource levels.
+    // Otherwise, the service auth configurations are applied automatically to the resources as well.
+    resource function get albums() returns Album[] {
+        return [
+            {title: "Blue Train", artist: "John Coltrane"},
+            {title: "Jeru", artist: "Gerry Mulligan"}
+        ];
+    }
+}
+
+//     // ─────────── CRUD: accounts ───────────
+
+//     resource function post accounts(@http:Payload AuthAccountIn body) returns ApiResponse|error {
+//         // Check duplicates
+//         stream<record {int c;}, sql:Error?> dup = dbClient->query(
+//             `SELECT COUNT(1) AS c FROM auth_accounts WHERE email = ${body.email}`);
+//         record {int c;} r = check dup.next();
+//         if r.c > 0 { return {message: "email already exists"}; }
+
+//         string salt = newSalt();
+//         string pwdHash = hashPassword(body.password, salt);
+//         string rolesCsv = rolesToDb(body.roles);
+
+//         sql:ParameterizedQuery ins = `INSERT INTO auth_accounts 
+//             (user_id, email, password_hash, password_salt, roles_csv, is_locked, failed_login_count, created_at) 
+//             VALUES (${body.userId}, ${body.email}, ${pwdHash}, ${salt}, ${rolesCsv}, ${false}, ${0}, ${nowIso()})`;
+//         _ = check dbClient->execute(ins);
+
+//         return {message: "account created"};
+//     }
+
+//     resource function get accounts() returns ApiResponse|error {
+//         stream<record {|
+//             int id; string user_id; string email; string roles_csv; boolean is_locked;
+//             int failed_login_count; string created_at; string? updated_at;
+//         |}, sql:Error?> rs = dbClient->query(
+//             `SELECT id, user_id, email, roles_csv, is_locked, failed_login_count, created_at, updated_at 
+//              FROM auth_accounts ORDER BY id DESC`);
+
+//         AuthAccountOut[] out = [];
+//         check rs.forEach(function (record {|int id; string user_id; string email; string roles_csv; boolean is_locked;
+//             int failed_login_count; string created_at; string? updated_at;|} row) {
+//             out.push({
+//                 id: row.id, userId: row.user_id, email: row.email, roles: rolesFromDb(row.roles_csv),
+//                 isLocked: row.is_locked, failedLoginCount: row.failed_login_count,
+//                 createdAt: row.created_at, updatedAt: row.updated_at
+//             });
+//         });
+//         return {message: "ok", data: out};
+//     }
+
+//     resource function get accounts/[int id]() returns ApiResponse|error {
+//         stream<record {|
+//             int id; string user_id; string email; string roles_csv; boolean is_locked;
+//             int failed_login_count; string created_at; string? updated_at;
+//         |}, sql:Error?> rs = dbClient->query(
+//             `SELECT id, user_id, email, roles_csv, is_locked, failed_login_count, created_at, updated_at 
+//              FROM auth_accounts WHERE id = ${id} LIMIT 1`);
+//         if !rs.hasNext() { return {message: "not found"}; }
+//         var row = check rs.next();
+//         AuthAccountOut out = {
+//             id: row.id, userId: row.user_id, email: row.email, roles: rolesFromDb(row.roles_csv),
+//             isLocked: row.is_locked, failedLoginCount: row.failed_login_count,
+//             createdAt: row.created_at, updatedAt: row.updated_at
+//         };
+//         return {message: "ok", data: out};
+//     }
+
+//     resource function put accounts/[int id](@http:Payload AuthAccountUpdate patch) returns ApiResponse|error {
+//         string[] sets = [];
+//         anydata[] vals = [];
+
+//         if patch.email is string {
+//             sets.push("email = ?");
+//             vals.push(patch.email);
+//         }
+//         if patch.password is string {
+//             string salt = newSalt();
+//             string hash = hashPassword(patch.password, salt);
+//             sets.push("password_hash = ?");
+//             vals.push(hash);
+//             sets.push("password_salt = ?");
+//             vals.push(salt);
+//         }
+//         if patch.roles is string[] {
+//             sets.push("roles_csv = ?");
+//             vals.push(rolesToDb(patch.roles));
+//         }
+//         if patch.isLocked is boolean {
+//             sets.push("is_locked = ?");
+//             vals.push(patch.isLocked);
+//         }
+//         if sets.length() == 0 { return {message: "nothing to update"}; }
+
+//         sets.push("updated_at = ?");
+//         vals.push(nowIso());
+//         string setClause = string:join(sets, ", ");
+
+//         string sqlStr = "UPDATE auth_accounts SET " + setClause + " WHERE id = ?";
+//         vals.push(id);
+//         sql:ParameterizedQuery q = sql:typedQuery(`${sqlStr}`, vals);
+//         _ = check dbClient->execute(q);
+//         return {message: "updated"};
+//     }
+
+//     resource function delete accounts/[int id]() returns ApiResponse|error {
+//         _ = check dbClient->execute(`DELETE FROM auth_accounts WHERE id = ${id}`);
+//         // Also clean refresh tokens
+//         _ = check dbClient->execute(`DELETE FROM refresh_tokens WHERE user_id = 
+//             (SELECT user_id FROM (SELECT user_id FROM auth_accounts WHERE id = ${id}) as t)`);
+//         return {message: "deleted"};
+//     }
+
+//     // ─────────── Auth: login / refresh / logout ───────────
+
+//     resource function post login(@http:Payload LoginRequest body) returns ApiResponse|error {
+//         // Fetch by email
+//         stream<record {|
+//             int id; string user_id; string email; string password_hash; string password_salt; 
+//             string roles_csv; boolean is_locked; int failed_login_count;
+//         |}, sql:Error?> rs = dbClient->query(
+//             `SELECT id, user_id, email, password_hash, password_salt, roles_csv, is_locked, failed_login_count 
+//              FROM auth_accounts WHERE email = ${body.email} LIMIT 1`);
+
+//         if !rs.hasNext() { return {message: "invalid credentials"}; }
+//         var row = check rs.next();
+//         if row.is_locked { return {message: "account locked"}; }
+
+//         string computed = hashPassword(body.password, row.password_salt);
+//         if computed != row.password_hash {
+//             // increment failed count
+//             _ = check dbClient->execute(
+//                 `UPDATE auth_accounts SET failed_login_count = ${row.failed_login_count + 1} WHERE id = ${row.id}`);
+//             return {message: "invalid credentials"};
+//         }
+
+//         // reset failed count, set last_login
+//         _ = check dbClient->execute(
+//             `UPDATE auth_accounts SET failed_login_count = ${0}, last_login = ${nowIso()} WHERE id = ${row.id}`);
+
+//         string[] roles = rolesFromDb(row.roles_csv);
+//         string access = check signAccessToken(row.user_id, row.email, roles);
+//         string refresh = randomToken();
+//         string expAt = time:utcToString(time:utcFromSeconds(<int>time:utcNow().time + REFRESH_TTL_SEC));
+
+//         // store refresh
+//         _ = check dbClient->execute(
+//             `INSERT INTO refresh_tokens (user_id, token, expires_at, created_at) 
+//              VALUES (${row.user_id}, ${refresh}, ${expAt}, ${nowIso()})`);
+
+//         return {message: "ok", data: <TokenPair>{accessToken: access, refreshToken: refresh}};
+//     }
+
+//     resource function post refresh(@http:Payload RefreshRequest body) returns ApiResponse|error {
+//         // validate refresh token
+//         stream<record {|
+//             string user_id; string token; string expires_at; string? revoked_at;
+//         |}, sql:Error?> rs = dbClient->query(
+//             `SELECT user_id, token, expires_at, revoked_at FROM refresh_tokens WHERE token = ${body.refreshToken} LIMIT 1`);
+
+//         if !rs.hasNext() { return {message: "invalid refresh token"}; }
+//         var row = check rs.next();
+//         if row.revoked_at is string { return {message: "refresh token revoked"}; }
+//         if time:utcFromString(row.expires_at).time <= time:utcNow().time {
+//             return {message: "refresh token expired"};
+//         }
+
+//         // fetch account & roles
+//         stream<record {string email; string roles_csv;}, sql:Error?> ars = dbClient->query(
+//             `SELECT email, roles_csv FROM auth_accounts WHERE user_id = ${row.user_id} LIMIT 1`);
+//         if !ars.hasNext() { return {message: "account not found"}; }
+//         var ar = check ars.next();
+
+//         string[] roles = rolesFromDb(ar.roles_csv);
+//         string access = check signAccessToken(row.user_id, ar.email, roles);
+
+//         return {message: "ok", data: <TokenPair>{accessToken: access, refreshToken: body.refreshToken}};
+//     }
+
+//     resource function post logout(@http:Payload RevokeRefreshRequest body) returns ApiResponse|error {
+//         _ = check dbClient->execute(
+//             `UPDATE refresh_tokens SET revoked_at = ${nowIso()} WHERE token = ${body.refreshToken}`);
+//         return {message: "logged out"};
+//     }
+
+//     // ─────────── Protected sample routes ───────────
+
+//     resource function get me(http:Request req) returns ApiResponse|error {
+//         json claims = check requireAuth(req);
+//         return {message: "ok", data: claims};
+//     }
+
+//     resource function get admin/ping(http:Request req) returns ApiResponse|error {
+//         json claims = check requireAuth(req);
+//         check requireRole(claims, "admin");
+//         return {message: "admin ok"};
+//     }
+// }
