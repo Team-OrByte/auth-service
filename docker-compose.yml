@@ -20,12 +20,12 @@ services:
     depends_on:
       - auth_service_db
     ports:
-      - '5000:5000'
+      - '8080:8080'
     volumes:
       - ./Config.toml:/app/Config.toml
       - ./logs:/app/logs
-      - ./public.key:/app/public.key
-      - ./private.crt:/app/private.crt
+      # - ./public.key:/app/public.key
+      # - ./private.crt:/app/private.crt
     environment:
       BAL_CONFIG_FILES: /app/Config.toml
 

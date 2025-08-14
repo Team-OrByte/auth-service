@@ -16,6 +16,7 @@ type AuthAccount record {|
     string? updatedAt;     
     boolean isLocked = false;
     int failedLoginCount = 0; 
+    string role ;
 |};
 
 type RefreshToken record {|
@@ -42,13 +43,12 @@ type LoginRequest record {|
     string password;
 |};
 
-
 type CreateAuthAccountRequest record {|
     string userId;
     string email;
     string passwordPlaintext; 
+    string role;
 |};
-
 
 type RefreshRequest record {|
     string refreshToken;
