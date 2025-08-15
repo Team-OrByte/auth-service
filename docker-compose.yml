@@ -21,11 +21,13 @@ services:
       - auth_service_db
     ports:
       - '8080:8080'
+      - '9090:9090'
     volumes:
       - ./Config.toml:/app/Config.toml
       - ./logs:/app/logs
-      # - ./public.key:/app/public.key
-      # - ./private.crt:/app/private.crt
+      - ./public.crt:/home/ballerina/public.crt
+      - ./private.key:/home/ballerina/private.key
+
     environment:
       BAL_CONFIG_FILES: /app/Config.toml
 

@@ -11,6 +11,8 @@ configurable string db_host = ?;
 configurable string db_pass = ?;
 configurable string db_user = ?;
 configurable string db_name = ?;
+configurable string pvt_key= ?;
+configurable string pub_key = ?;
 
 postgresql:Options postgresqlOptions = {
     connectTimeout: 10
@@ -37,22 +39,23 @@ service /auth on new http:Listener(8080) {
         created_at AS createdAt,
         updated_at AS updatedAt,
         is_locked AS isLocked,
-        failed_login_count AS failedLoginCount
-      FROM auth_accounts
-      WHERE email = ${req.email}
-      LIMIT 1`;
+        failed_login_count AS failedLoginCount,
+        role
+        FROM auth_accounts
+        WHERE email = ${req.email}
+        LIMIT 1`;
 
         stream<AuthAccount, sql:Error?> rs = dbClient->query(q, AuthAccount);
-
-        if rs.count() == 0 {
-            return {message: "invalid credentials", data: []};
-        }
 
         AuthAccount[] users = [];
 
         error? e = rs.forEach(function(AuthAccount user) {
             users.push(user);
         });
+
+        if users.length() == 0 {
+            return {message: "User not found", data: []};
+        }
 
         if e is error {
             log:printError("Error while processing users stream", err = e.toString());
@@ -68,7 +71,7 @@ service /auth on new http:Listener(8080) {
             log:printError("bcrypt verify failed", err = verifyRes.toString());
             return {message: "Failed", data: []};
         }
-
+      
         boolean passwordMatch = verifyRes;
 
         if passwordMatch {
@@ -79,7 +82,7 @@ service /auth on new http:Listener(8080) {
                 expTime: 3600,
                 signatureConfig: {
                     config: {
-                        keyFile: "private.key"
+                        keyFile: pvt_key
                     }
                 },
                 customClaims: {
@@ -123,10 +126,7 @@ service /auth on new http:Listener(8080) {
             log:printError("Error while checking existing accounts", err = e.toString());
             return {message: "Failed to check existing accounts", data: []};
         }
-        foreach var item in existingAccounts {
-            log:printInfo("Existing account found: " + item.userId);
-        }
-        
+
         if existingAccounts.length() > 0 {
             return {message: "User already exists", data: []};
         }
@@ -150,5 +150,31 @@ service /auth on new http:Listener(8080) {
         }
 
         return {message: "Account created successfully", data: [req.userId]};
+    }   
+}
+
+//Example on Authorization 
+listener http:Listener securedEP = new (9090);
+@http:ServiceConfig{
+     auth: [
+        {
+            jwtValidatorConfig: {
+                issuer: "Orbyte",
+                audience: "vEwzbcasJVQm1jVYHUHCjhxZ4tYa",
+                signatureConfig: {
+                    certFile: pub_key
+                },
+                scopeKey: "scp"
+            },
+            scopes: ["user"]
+        }
+    ]
+}
+service / on securedEP {
+     resource function get album() returns anydata[] {
+        return [
+            {title: "Blue Train", artist: "John Coltrane"},
+            {title: "Jeru", artist: "Gerry Mulligan"}
+        ];
     }
 }
