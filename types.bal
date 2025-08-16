@@ -168,3 +168,9 @@ type AuthAccountUpdate record {|
     boolean? isLocked;
 |};
 
+
+public type Claims record {|
+    string? userId;
+    string? email;
+    string? role;
+|};

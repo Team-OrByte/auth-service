@@ -3,15 +3,15 @@ import ballerina/http;
 import ballerina/jwt;
 import ballerina/log;
 import ballerina/sql;
-import ballerinax/postgresql;
 import ballerina/time;
+import ballerinax/postgresql;
 
 configurable int db_port = ?;
 configurable string db_host = ?;
 configurable string db_pass = ?;
 configurable string db_user = ?;
 configurable string db_name = ?;
-configurable string pvt_key= ?;
+configurable string pvt_key = ?;
 configurable string pub_key = ?;
 
 postgresql:Options postgresqlOptions = {
@@ -20,8 +20,41 @@ postgresql:Options postgresqlOptions = {
 
 postgresql:Client dbClient = check new (username = db_user, password = db_pass, database = db_name, host = db_host, port = db_port, options = postgresqlOptions);
 
-function hashPassword(string pwd, string salt) returns string {
-    return crypto:hashSha256((salt + ":" + pwd).toBytes()).toBase16();
+//Extract Claims from jwt
+public function extractClaims(string authHeader) returns Claims|error {
+    int? index = authHeader.indexOf("Bearer ");
+    if index is () {
+        return error("Invalid Authorization header format");
+    }
+
+    string jwtString = authHeader.substring(index + 7);
+    log:printInfo("Extracted JWT: " + jwtString);
+
+    var decoded = jwt:decode(jwtString);
+    if decoded is [jwt:Header, jwt:Payload] {
+        jwt:Payload payload = decoded[1];
+        Claims claims = {role: (), userId: (), email: ()};
+
+        // Extract userId
+        if payload["userId"] is string {
+            claims.userId = payload["userId"].toString();
+        }
+
+        // Extract email
+        if payload["sub"] is string {
+            claims.email = payload["sub"];
+        }
+
+        // Extract scopes
+        if (payload["scp"] is string) {
+            claims.role = payload["scp"].toString();
+        }
+
+        return claims;
+    } else if decoded is jwt:Error {
+        return error("JWT decode failed: " + decoded.toString());
+    }
+
 }
 
 service /auth on new http:Listener(8080) {
@@ -71,7 +104,7 @@ service /auth on new http:Listener(8080) {
             log:printError("bcrypt verify failed", err = verifyRes.toString());
             return {message: "Failed", data: []};
         }
-      
+
         boolean passwordMatch = verifyRes;
 
         if passwordMatch {
@@ -86,8 +119,8 @@ service /auth on new http:Listener(8080) {
                     }
                 },
                 customClaims: {
-                    scp: [users[0].role],
-                    userId: users[0].id
+                    scp: users[0].role,
+                    userId: users[0].userId
                 }
             };
 
@@ -100,7 +133,7 @@ service /auth on new http:Listener(8080) {
 
             return {
                 message: "success",
-                data: token
+                data: {token, role: users[0].role}
             };
 
         } else {
@@ -115,7 +148,7 @@ service /auth on new http:Listener(8080) {
         // Check if user already exists
         sql:ParameterizedQuery checkUserQuery = `SELECT id FROM auth_accounts WHERE email = ${req.email} LIMIT 1`;
         stream<AuthAccount, sql:Error?> checkUserStream = dbClient->query(checkUserQuery, AuthAccount);
-        
+
         AuthAccount[] existingAccounts = [];
 
         error? e = checkUserStream.forEach(function(AuthAccount account) {
@@ -136,7 +169,7 @@ service /auth on new http:Listener(8080) {
         if passwordHash is error {
             return {message: " failed to create user", data: []};
         }
-           // Insert new account
+        // Insert new account
         time:Utc currentTime = time:utcNow();
 
         sql:ParameterizedQuery insertQuery = `INSERT INTO auth_accounts (user_id, email, password_hash, created_at, role)
@@ -150,13 +183,14 @@ service /auth on new http:Listener(8080) {
         }
 
         return {message: "Account created successfully", data: [req.userId]};
-    }   
+    }
 }
 
 //Example on Authorization 
 listener http:Listener securedEP = new (9090);
-@http:ServiceConfig{
-     auth: [
+
+@http:ServiceConfig {
+    auth: [
         {
             jwtValidatorConfig: {
                 issuer: "Orbyte",
@@ -166,15 +200,28 @@ listener http:Listener securedEP = new (9090);
                 },
                 scopeKey: "scp"
             },
-            scopes: ["user"]
+            scopes: "user"
         }
     ]
 }
 service / on securedEP {
-     resource function get album() returns anydata[] {
+    resource function get album(@http:Header string Authorization) returns anydata[] {
+
+        Claims|error claimsResult = extractClaims(Authorization);
+        if claimsResult is error {
+            {
+                log:printInfo("Failed to extract claims", err = claimsResult.toString());
+            }
+
+        }
+        else {
+            Claims claims = claimsResult;
+            log:printInfo("Extracted claims: " + claims.toString());
+        }
         return [
             {title: "Blue Train", artist: "John Coltrane"},
             {title: "Jeru", artist: "Gerry Mulligan"}
         ];
     }
+
 }
