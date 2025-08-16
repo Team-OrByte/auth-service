@@ -337,6 +337,9 @@ dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "observe"}
 ]
+modules = [
+	{org = "ballerinai", packageName = "observe", moduleName = "observe"}
+]
 
 [[package]]
 org = "ballerinax"
@@ -378,6 +381,7 @@ dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "sql"},
 	{org = "ballerina", name = "time"},
+	{org = "ballerinai", name = "observe"},
 	{org = "ballerinax", name = "postgresql"}
 ]
 modules = [
