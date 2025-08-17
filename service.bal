@@ -57,6 +57,13 @@ public function extractClaims(string authHeader) returns Claims|error {
 
 }
 
+@http:ServiceConfig{
+     cors: {
+        allowOrigins: ["*"],
+        allowMethods: ["POST", "OPTIONS"],
+        allowHeaders: ["Content-Type","Access-Control-Allow-Origin","X-Service-Name"]
+    }
+}
 service /auth on new http:Listener(8080) {
 
     resource function post login(@http:Payload LoginRequest req) returns ApiResponse {
