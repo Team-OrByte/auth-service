@@ -13,7 +13,7 @@ FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
-COPY --from=builder /app/target/bin/bike_service.jar .
+COPY --from=builder /app/target/bin/auth_service.jar .
 
 RUN mkdir -p logs
 
