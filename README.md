@@ -24,23 +24,23 @@ Before running the service, install:
 ---
 
 ## 📂 Project Structure 
-└── auth-service/
-    ├── Ballerina.toml
-    ├── Config.toml
-    ├── Dependencies.toml
-    ├── docker-compose.yml
-    ├── main.bal
-    ├── private.key
-    ├── public.crt
-    ├── service.bal
-    ├── service.txt
-    ├── types.bal
-    ├── .devcontainer.json
-    ├── db/
-    │   └── init.sql
-    ├── logs/
-    ├── private.crt/
-    └── public.key/
+└── auth-service/ <br>
+    ├── Ballerina.toml <br>
+    ├── Config.toml <br>
+    ├── Dependencies.toml<br>
+    ├── docker-compose.yml<br>
+    ├── main.bal<br>
+    ├── private.key<br>
+    ├── public.crt<br>
+    ├── service.bal<br>
+    ├── service.txt<br>
+    ├── types.bal<br>
+    ├── .devcontainer.json<br>
+    ├── db/<br>
+    │   └── init.sql<br>
+    ├── logs/<br>
+    ├── private.crt/<br>
+    └── public.key/<br>
 
 
 
@@ -57,8 +57,8 @@ db_pass = "your_db_password"
 db_user = "your_db_user"
 db_name = "your_db_name"
 
-pvt_key = "/app/private.key"
-pub_key = "/app/public.crt"
+pvt_key = "private.key"
+pub_key = "public.crt"
 ```
 
 # Private key
@@ -94,6 +94,7 @@ curl -X POST http://localhost:8080/auth/login \
 The response will contain a JWT token.
 
 3️⃣ Access Secured /album Endpoint
+for testing purposes
 
 ```
 curl -k -X GET https://localhost:9090/album \
